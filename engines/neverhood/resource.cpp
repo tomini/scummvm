@@ -243,7 +243,7 @@ int16 AnimResource::getFrameIndex(uint32 frameHash) {
 const Graphics::Surface *AnimResource::getHdOverride(uint frameIndex) {
 	// Palette-index color replacement has no meaning for a true-color frame;
 	// while it is active keep the original frame so the effect stays correct.
-	if (_fileHash == 0 || frameIndex >= _frames.size() || (_replEnabled && _replOldColor != _replNewColor))
+	if (_fileHash == 0 || frameIndex >= _frames.size() || hasActiveColorReplacement())
 		return nullptr;
 	return _vm->_res->getOverride(_fileHash, frameIndex);
 }

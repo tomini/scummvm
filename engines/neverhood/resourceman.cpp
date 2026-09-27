@@ -18,7 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * added the HD asset override lookup (initOverrides/hasOverride/getOverride).
+ * added the HD asset override lookup (initOverrides/hasOverride/getOverride)
+ * and the HD source export hook (exportSource).
  */
 
 #include "common/ptr.h"
@@ -130,6 +131,45 @@ const Graphics::Surface *ResourceMan::getOverride(uint32 fileHash, int frameInde
 
 bool ResourceMan::hasOverride(uint32 fileHash) const {
 	return _overrideHashes.contains(fileHash);
+}
+
+// HD source export (Neverhood Reklayed)
+
+void ResourceMan::exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData) {
+	if (!_sourceExportEnabled)
+		return;
+	if (!paletteData) {
+		debug(3, "HD source export: skipped %s (no active palette yet)", makeOverrideKey(fileHash, frameIndex).c_str());
+		return;
+	}
+
+	// Re-write a few times, not once: the palette can still be mid-fade the
+	// first time an asset is drawn (e.g. a scene fading in over its
+	// background), so a single first-draw snapshot can catch the wrong
+	// colors. A handful of draws later the fade has settled; stop after
+	// that instead of writing every frame for the rest of the session.
+	static const int kMaxExportsPerKey = 5;
+	const Common::String key = makeOverrideKey(fileHash, frameIndex);
+	int &exportCount = _exportedKeys[key];
+	if (exportCount >= kMaxExportsPerKey)
+		return;
+	exportCount++;
+
+	byte rgbPalette[768];
+	for (int i = 0; i < 256; i++) {
+		rgbPalette[i * 3 + 0] = paletteData[i * 4 + 0];
+		rgbPalette[i * 3 + 1] = paletteData[i * 4 + 1];
+		rgbPalette[i * 3 + 2] = paletteData[i * 4 + 2];
+	}
+
+	Common::DumpFile out;
+	if (!out.open(_sourceExportDir.appendComponent(key + ".png"), true)) {
+		warning("HD source export: failed to open %s.png for writing", key.c_str());
+		return;
+	}
+	Image::writePNG(out, surface, rgbPalette, 256);
+	out.close();
+	debug(2, "HD source export: wrote %s.png", key.c_str());
 }
 
 void ResourceMan::addArchive(const Common::Path &filename, bool isOptional) {

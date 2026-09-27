@@ -29,7 +29,8 @@ namespace Neverhood {
 
 BaseSurface::BaseSurface(NeverhoodEngine *vm, int priority, int16 width, int16 height, Common::String name)
 	: _vm(vm), _priority(priority), _visible(true), _transparent(true),
-	_clipRects(nullptr), _clipRectsCount(0), _version(0), _name(name), _hdBound(false) {
+	_clipRects(nullptr), _clipRectsCount(0), _version(0), _name(name), _hdBound(false),
+	_sourceExportFileHash(0), _sourceExportFrameIndex(-1) {
 
 	_drawRect.x = 0;
 	_drawRect.y = 0;
@@ -55,6 +56,13 @@ BaseSurface::~BaseSurface() {
 
 void BaseSurface::draw() {
 	if (_surface && _visible && _drawRect.width > 0 && _drawRect.height > 0) {
+		// Neverhood Reklayed: HD source export, see MODIFICATIONS.md. Done here,
+		// not at load time -- this is the one point guaranteed to run after the
+		// scene's own setPalette(), since setBackground() (which loads/draws)
+		// always runs before it and the previous scene's palette may have just
+		// been torn down (Palette::~Palette() nulls it out).
+		if (_sourceExportFileHash && _vm->_res->isSourceExportEnabled())
+			_vm->_res->exportSource(_sourceExportFileHash, _sourceExportFrameIndex, *_surface, _vm->_screen->getPaletteData());
 		if (_clipRects && _clipRectsCount) {
 			_vm->_screen->drawSurfaceClipRects(_surface, _drawRect, _clipRects, _clipRectsCount, _transparent, _version);
 		} else if (_sysRect.x == 0 && _sysRect.y == 0) {
@@ -67,6 +75,7 @@ void BaseSurface::draw() {
 
 void BaseSurface::clear() {
 	unbindHdOverride();
+	bindSourceExportKey(0, -1);
 	_surface->fillRect(Common::Rect(0, 0, _surface->w, _surface->h), 0);
 	++_version;
 }
@@ -93,7 +102,11 @@ void BaseSurface::drawSpriteResource(SpriteResource &spriteResource) {
 		clear();
 		spriteResource.draw(_surface, false, false);
 		bindHdOverride(spriteResource.getHdOverride(), spriteResource.getDimensions().width, spriteResource.getDimensions().height, false, false);
+		bindSourceExportKey(spriteResource.getFileHash(), -1);
 		++_version;
+	} else {
+		debug(3, "BaseSurface::drawSpriteResource() size mismatch, sprite %dx%d vs drawRect %dx%d -- not drawn",
+			spriteResource.getDimensions().width, spriteResource.getDimensions().height, _drawRect.width, _drawRect.height);
 	}
 }
 
@@ -108,6 +121,7 @@ void BaseSurface::drawSpriteResourceEx(SpriteResource &spriteResource, bool flip
 			clear();
 			spriteResource.draw(_surface, flipX, flipY);
 			bindHdOverride(spriteResource.getHdOverride(), spriteResource.getDimensions().width, spriteResource.getDimensions().height, flipX, flipY);
+			bindSourceExportKey(spriteResource.getFileHash(), -1);
 			++_version;
 		}
 	}
@@ -124,6 +138,10 @@ void BaseSurface::drawAnimResource(AnimResource &animResource, uint frameIndex, 
 			animResource.draw(frameIndex, _surface, flipX, flipY);
 			const NDrawRect &frameRect = animResource.getFrameInfo(frameIndex).drawOffset;
 			bindHdOverride(animResource.getHdOverride(frameIndex), frameRect.width, frameRect.height, flipX, flipY);
+			// Skip export while color replacement is active, same reasoning as
+			// getHdOverride(): the active palette alone won't capture that color.
+			if (!animResource.hasActiveColorReplacement())
+				bindSourceExportKey(animResource.getFileHash(), frameIndex);
 			++_version;
 		}
 	}
@@ -140,8 +158,10 @@ void BaseSurface::copyFrom(Graphics::Surface *sourceSurface, int16 x, int16 y, N
 	// Copy a rectangle from sourceSurface, 0 is the transparent color
 	// Clipping is performed against the right/bottom border since x, y will always be >= 0
 
-	// Neverhood Reklayed: pixels composited in here are not part of any HD override
+	// Neverhood Reklayed: pixels composited in here are not part of any HD
+	// override, nor still a clean copy of whatever _sourceExportFileHash names
 	unbindHdOverride();
+	bindSourceExportKey(0, -1);
 
 	if (x + sourceRect.width > _surface->w)
 		sourceRect.width = _surface->w - x - 1;

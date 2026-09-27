@@ -18,7 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * opt-in HD override mode ("hd_overrides_path" setting), mouse input mapping.
+ * opt-in HD override mode ("hd_overrides_path" setting), mouse input mapping,
+ * opt-in HD source export ("export_hd_source_path" setting).
  */
 
 #include "common/file.h"
@@ -133,6 +134,16 @@ Common::Error NeverhoodEngine::run() {
 		const int overrideCount = _res->initOverrides(hdDir);
 		debug(1, "HD overrides: enabled, %d file(s) in '%s', output %dx%d %dbpp", overrideCount,
 			ConfMan.get("hd_overrides_path").c_str(), 640 * Screen::kHdScale, 480 * Screen::kHdScale, hdFormat.bytesPerPixel * 8);
+	}
+
+	// Neverhood Reklayed: HD source export, see MODIFICATIONS.md. Opt-in via
+	// "export_hd_source_path"; dumps every sprite/anim frame actually drawn
+	// during play as "<HASH>.png" with the palette active at that moment.
+	// Independent of hd_overrides_path -- exporting and overriding don't need
+	// to run in the same session.
+	if (ConfMan.hasKey("export_hd_source_path")) {
+		_res->enableSourceExport(ConfMan.getPath("export_hd_source_path"));
+		debug(1, "HD source export: enabled, writing to '%s'", ConfMan.get("export_hd_source_path").c_str());
 	}
 
 	if (isDemo()) {

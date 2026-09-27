@@ -18,7 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * BaseSurface binds HD override bitmaps to its surface for the HD render path.
+ * BaseSurface binds HD override bitmaps to its surface for the HD render
+ * path, and binds a fileHash/frameIndex for the HD source export hook.
  */
 
 #ifndef NEVERHOOD_GRAPHICS_H
@@ -126,6 +127,13 @@ protected:
 	bool _hdBound;
 	void bindHdOverride(const Graphics::Surface *hdSurface, int16 width, int16 height, bool flipX, bool flipY);
 	void unbindHdOverride();
+	// Neverhood Reklayed: identity of what's currently in _surface, for the HD
+	// source export hook. Read in draw() rather than at load time, since only
+	// there is the scene's own palette (set right after the background is
+	// first loaded) guaranteed to already be active -- see MODIFICATIONS.md.
+	uint32 _sourceExportFileHash;
+	int _sourceExportFrameIndex;
+	void bindSourceExportKey(uint32 fileHash, int frameIndex) { _sourceExportFileHash = fileHash; _sourceExportFrameIndex = frameIndex; }
 };
 
 class ShadowSurface : public BaseSurface {

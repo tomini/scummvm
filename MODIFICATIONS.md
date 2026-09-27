@@ -50,3 +50,22 @@ Upstream ScummVM copyright/license terms are unchanged; see `COPYRIGHT` and `COP
   - `neverhood.cpp`: HD mode setup; mouse event coordinates are divided by the output scale so
     game logic stays in 640x480 space. `mouse.cpp`: cursor scaled with the output in HD mode.
   - Game logic (positions, collision, hit rects, walk paths) is untouched.
+- HD source export hook (`export_hd_source_path` setting), for dumping
+  correctly-colored source frames to feed the upscale pipeline (later phase).
+  - Same file naming as HD overrides: `<HASH>.png` / `<HASH>_<frameIndex>.png`.
+  - Root cause of an early bug: a naive "export at draw-into-offscreen-surface
+    time" hook silently captured wrong or missing colors for scene
+    backgrounds. `Scene::setBackground()` always runs before
+    `Scene::setPalette()`, and `Palette::~Palette()` (previous scene) nulls
+    out `Screen::_paletteData` on teardown, so the background's first (and
+    only) draw always happens in a window where the new scene's palette isn't
+    active yet.
+  - Fix: `BaseSurface` now binds a fileHash/frameIndex to itself (mirroring
+    `bindHdOverride()`) whenever it's filled, via new
+    `SpriteResource::getFileHash()` / `AnimResource::getFileHash()`. The
+    actual `exportSource()` call moved to `BaseSurface::draw()`, the point
+    where the surface is composited to the screen -- guaranteed to run after
+    the scene's own `setPalette()`. `clear()`/`copyFrom()` clear the binding.
+    Re-writes a key up to 5 times, not once, since the palette can still be
+    mid-fade on the first few draws. `AnimResource::hasActiveColorReplacement()`
+    (new) skips frames under `setRepl()`, same reasoning as `getHdOverride()`.

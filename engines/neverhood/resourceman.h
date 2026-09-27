@@ -18,7 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * added the HD asset override lookup (initOverrides/hasOverride/getOverride).
+ * added the HD asset override lookup (initOverrides/hasOverride/getOverride)
+ * and the HD source export hook (enableSourceExport/exportSource).
  */
 
 #ifndef NEVERHOOD_RESOURCEMAN_H
@@ -29,6 +30,7 @@
 #include "common/fs.h"
 #include "common/hashmap.h"
 #include "common/hash-str.h"
+#include "common/path.h"
 #include "graphics/surface.h"
 #include "neverhood/neverhood.h"
 #include "neverhood/blbarchive.h"
@@ -130,6 +132,15 @@ public:
 	// frameIndex < 0 = sprite, otherwise animation frame. Decoded lazily, then cached.
 	const Graphics::Surface *getOverride(uint32 fileHash, int frameIndex = -1);
 	static Graphics::PixelFormat getOverrideFormat() { return Graphics::PixelFormat::createFormatARGB32(); }
+	// HD source export (Neverhood Reklayed), see MODIFICATIONS.md.
+	// Opt-in: while enabled, every drawn sprite/anim frame is dumped once as
+	// "<HASH>.png" / "<HASH>_<frameIndex>.png" using the CLUT8 pixels and the
+	// palette active at the moment it was drawn (a raw index has no fixed
+	// color outside that context). Meant to be run through actual gameplay,
+	// not a static archive walk, so exported colors are always correct.
+	void enableSourceExport(const Common::Path &dir) { _sourceExportDir = dir; _sourceExportEnabled = true; }
+	bool isSourceExportEnabled() const { return _sourceExportEnabled; }
+	void exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData);
 	const ResourceFileEntry& getEntry(uint index) { return _entries[index]; }
 	uint getEntryCount() { return _entries.size(); }
 	void queryResource(uint32 fileHash, ResourceHandle &resourceHandle);
@@ -147,6 +158,10 @@ protected:
 	Common::HashMap<uint32, bool> _overrideHashes;
 	Common::HashMap<Common::String, Common::FSNode> _overrideFiles;
 	Common::HashMap<Common::String, Graphics::Surface*> _overrideSurfaces; // nullptr value = decode failed
+	// HD source export.
+	bool _sourceExportEnabled = false;
+	Common::Path _sourceExportDir;
+	Common::HashMap<Common::String, int> _exportedKeys; // export count per key, see exportSource()
 };
 
 } // End of namespace Neverhood

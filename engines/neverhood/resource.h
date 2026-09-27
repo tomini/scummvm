@@ -18,7 +18,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * added HD override accessors to SpriteResource and AnimResource.
+ * added HD override accessors, getFileHash() and
+ * AnimResource::hasActiveColorReplacement() for BaseSurface's HD source
+ * export hook.
  */
 
 #ifndef NEVERHOOD_RESOURCE_H
@@ -63,6 +65,8 @@ public:
 	const byte *getPixels() const { return _pixels; }
 	// HD override for this sprite, or nullptr (Neverhood Reklayed)
 	const Graphics::Surface *getHdOverride();
+	// Neverhood Reklayed: valid once load() has succeeded, 0 otherwise.
+	uint32 getFileHash() const { return _fileHash; }
 protected:
 	NeverhoodEngine *_vm;
 	ResourceHandle _resourceHandle;
@@ -109,9 +113,15 @@ public:
 	int16 getFrameIndex(uint32 frameHash);
 	void setReplEnabled(bool value) { _replEnabled = value; }
 	void setRepl(byte oldColor, byte newColor);
+	// Neverhood Reklayed: true if setRepl() has swapped in a color that isn't
+	// captured by the active palette alone (used by getHdOverride() and the
+	// HD source export hook to skip these frames).
+	bool hasActiveColorReplacement() const { return _replEnabled && _replOldColor != _replNewColor; }
 	NDimensions loadSpriteDimensions(uint32 fileHash);
 	// HD override for one frame, or nullptr (Neverhood Reklayed)
 	const Graphics::Surface *getHdOverride(uint frameIndex);
+	// Neverhood Reklayed: valid once load() has succeeded, 0 otherwise.
+	uint32 getFileHash() const { return _fileHash; }
 protected:
 	NeverhoodEngine *_vm;
 	ResourceHandle _resourceHandle;
