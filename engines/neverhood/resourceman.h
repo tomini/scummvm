@@ -18,7 +18,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * added the ResourceMan::hasOverride() HD asset override hook.
+ * added the HD asset override lookup (initOverrides/hasOverride/getOverride).
  */
 
 #ifndef NEVERHOOD_RESOURCEMAN_H
@@ -26,7 +26,10 @@
 
 #include "common/array.h"
 #include "common/file.h"
+#include "common/fs.h"
 #include "common/hashmap.h"
+#include "common/hash-str.h"
+#include "graphics/surface.h"
 #include "neverhood/neverhood.h"
 #include "neverhood/blbarchive.h"
 #include "neverhood/nhcarchive.h"
@@ -118,7 +121,15 @@ public:
 	Common::SeekableReadStream *createNhcStream(uint32 fileHash, uint32 type);
 	bool nhcExists(uint32 fileHash, uint32 type);
 	bool exists(uint32 fileHash);
+	// HD asset override layer (Neverhood Reklayed), see MODIFICATIONS.md.
+	// initOverrides() scans one directory for "<HASH>.png" (sprite) and
+	// "<HASH>_<frameIndex>.png" (animation frame) files; returns how many it found.
+	int initOverrides(const Common::FSNode &dir);
 	bool hasOverride(uint32 fileHash) const;
+	// Decoded override in getOverrideFormat(), or nullptr if there is none.
+	// frameIndex < 0 = sprite, otherwise animation frame. Decoded lazily, then cached.
+	const Graphics::Surface *getOverride(uint32 fileHash, int frameIndex = -1);
+	static Graphics::PixelFormat getOverrideFormat() { return Graphics::PixelFormat::createFormatARGB32(); }
 	const ResourceFileEntry& getEntry(uint index) { return _entries[index]; }
 	uint getEntryCount() { return _entries.size(); }
 	void queryResource(uint32 fileHash, ResourceHandle &resourceHandle);
@@ -132,6 +143,10 @@ protected:
 	EntriesMap _entries;
 	Common::HashMap<uint32, ResourceData*> _data;
 	Common::Array<Resource*> _resources;
+	// HD override layer. Empty unless initOverrides() was called.
+	Common::HashMap<uint32, bool> _overrideHashes;
+	Common::HashMap<Common::String, Common::FSNode> _overrideFiles;
+	Common::HashMap<Common::String, Graphics::Surface*> _overrideSurfaces; // nullptr value = decode failed
 };
 
 } // End of namespace Neverhood

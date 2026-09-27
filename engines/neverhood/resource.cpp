@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * added HD override accessors to SpriteResource and AnimResource.
  */
 
 #include "common/algorithm.h"
@@ -29,7 +31,7 @@ namespace Neverhood {
 // SpriteResource
 
 SpriteResource::SpriteResource(NeverhoodEngine *vm)
-	 : _vm(vm), _pixels(nullptr) {
+	 : _vm(vm), _pixels(nullptr), _rle(false), _fileHash(0) {
 }
 
 SpriteResource::~SpriteResource() {
@@ -57,6 +59,8 @@ bool SpriteResource::load(uint32 fileHash, bool doLoadPosition) {
 		NPoint *position = doLoadPosition ? &_position : nullptr;
 		parseBitmapResource(spriteData, &_rle, &_dimensions, position, nullptr, &_pixels);
 	}
+	if (_pixels)
+		_fileHash = fileHash;
 	return _pixels != nullptr;
 }
 
@@ -64,6 +68,11 @@ void SpriteResource::unload() {
 	_vm->_res->unloadResource(_resourceHandle);
 	_pixels = nullptr;
 	_rle = false;
+	_fileHash = 0;
+}
+
+const Graphics::Surface *SpriteResource::getHdOverride() {
+	return _pixels ? _vm->_res->getOverride(_fileHash) : nullptr;
 }
 
 // PaletteResource
@@ -229,6 +238,14 @@ int16 AnimResource::getFrameIndex(uint32 frameHash) {
 		}
 	debug(2, "AnimResource::getFrameIndex(%08X) -> %d", frameHash, frameIndex);
 	return frameIndex;
+}
+
+const Graphics::Surface *AnimResource::getHdOverride(uint frameIndex) {
+	// Palette-index color replacement has no meaning for a true-color frame;
+	// while it is active keep the original frame so the effect stays correct.
+	if (_fileHash == 0 || frameIndex >= _frames.size() || (_replEnabled && _replOldColor != _replNewColor))
+		return nullptr;
+	return _vm->_res->getOverride(_fileHash, frameIndex);
 }
 
 void AnimResource::setRepl(byte oldColor, byte newColor) {

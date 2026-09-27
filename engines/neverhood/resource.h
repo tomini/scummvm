@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * added HD override accessors to SpriteResource and AnimResource.
  */
 
 #ifndef NEVERHOOD_RESOURCE_H
@@ -59,6 +61,8 @@ public:
 	NPoint& getPosition() { return _position; }
 	bool isRle() const { return _rle; }
 	const byte *getPixels() const { return _pixels; }
+	// HD override for this sprite, or nullptr (Neverhood Reklayed)
+	const Graphics::Surface *getHdOverride();
 protected:
 	NeverhoodEngine *_vm;
 	ResourceHandle _resourceHandle;
@@ -66,6 +70,7 @@ protected:
 	NPoint _position;
 	const byte *_pixels;
 	bool _rle;
+	uint32 _fileHash;
 };
 
 class PaletteResource {
@@ -105,6 +110,8 @@ public:
 	void setReplEnabled(bool value) { _replEnabled = value; }
 	void setRepl(byte oldColor, byte newColor);
 	NDimensions loadSpriteDimensions(uint32 fileHash);
+	// HD override for one frame, or nullptr (Neverhood Reklayed)
+	const Graphics::Surface *getHdOverride(uint frameIndex);
 protected:
 	NeverhoodEngine *_vm;
 	ResourceHandle _resourceHandle;

@@ -17,9 +17,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * cursor is scaled with the output in HD override mode.
  */
 
+#include "common/frac.h"
 #include "neverhood/mouse.h"
+#include "neverhood/screen.h"
 #include "graphics/cursorman.h"
 
 namespace Neverhood {
@@ -184,7 +188,12 @@ void Mouse::updateCursor() {
 		_drawOffset = _mouseCursorResource.getRect();
 		_surface->drawMouseCursorResource(_mouseCursorResource, _frameNum / 2);
 		Graphics::Surface *cursorSurface = _surface->getSurface();
-		CursorMan.replaceCursor(*cursorSurface, -_drawOffset.x, -_drawOffset.y, 0);
+		if (_vm->_screen->isHdEnabled()) {
+			// Neverhood Reklayed: keep the cursor's on-screen size in the scaled HD output
+			const frac_t scale = intToFrac(_vm->_screen->getOutputScale());
+			CursorMan.replaceCursor(*cursorSurface, -_drawOffset.x, -_drawOffset.y, 0, nullptr, scale, scale);
+		} else
+			CursorMan.replaceCursor(*cursorSurface, -_drawOffset.x, -_drawOffset.y, 0);
 	}
 
 }

@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * whole-palette fades are reported to Screen so HD (true-color) pixels fade too.
  */
 
 #include "neverhood/palette.h"
@@ -141,6 +143,11 @@ void Palette::startFadeToPalette(int counter) {
 	_palCounter = counter;
 	_fadeStep = calculateFadeStep(counter);
 	_status = 2;
+	// Neverhood Reklayed: tell the HD path whether this fades in from one flat color
+	bool uniform = true;
+	for (int i = 1; i < 256 && uniform; i++)
+		uniform = _palette[i * 4 + 0] == _palette[0] && _palette[i * 4 + 1] == _palette[1] && _palette[i * 4 + 2] == _palette[2];
+	_vm->_screen->hdFadeInStart(_palette, uniform, _palette[0], _palette[1], _palette[2]);
 }
 
 void Palette::fillBaseWhite(int index, int count) {
@@ -175,6 +182,7 @@ void Palette::update() {
 		if (_palCounter > 1) {
 			for (int i = 0; i < 256; i++)
 				fadeColor(_palette + i * 4, _fadeToR, _fadeToG, _fadeToB);
+			_vm->_screen->hdFadeOutStep(_palette, _fadeToR, _fadeToG, _fadeToB, _fadeStep); // Neverhood Reklayed
 			_vm->_screen->testPalette(_palette);
 			_palCounter--;
 		} else {
@@ -185,11 +193,13 @@ void Palette::update() {
 		if (_palCounter > 1) {
 			for (int i = 0; i < 256; i++)
 				fadeColor(_palette + i * 4, _basePalette[i * 4 + 0], _basePalette[i * 4 + 1], _basePalette[i * 4 + 2]);
+			_vm->_screen->hdFadeInStep(_palette, _fadeStep); // Neverhood Reklayed
 			_vm->_screen->testPalette(_palette);
 			_palCounter--;
 		} else {
 			memcpy(_palette, _basePalette, 256 * 4);
 			_status = 0;
+			_vm->_screen->hdFadeInDone(_palette); // Neverhood Reklayed
 		}
 	}
 }

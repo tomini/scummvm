@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * BaseSurface binds HD override bitmaps to its surface for the HD render path.
  */
 
 #include "neverhood/graphics.h"
@@ -27,7 +29,7 @@ namespace Neverhood {
 
 BaseSurface::BaseSurface(NeverhoodEngine *vm, int priority, int16 width, int16 height, Common::String name)
 	: _vm(vm), _priority(priority), _visible(true), _transparent(true),
-	_clipRects(nullptr), _clipRectsCount(0), _version(0), _name(name) {
+	_clipRects(nullptr), _clipRectsCount(0), _version(0), _name(name), _hdBound(false) {
 
 	_drawRect.x = 0;
 	_drawRect.y = 0;
@@ -46,6 +48,7 @@ BaseSurface::BaseSurface(NeverhoodEngine *vm, int priority, int16 width, int16 h
 }
 
 BaseSurface::~BaseSurface() {
+	unbindHdOverride();
 	_surface->free();
 	delete _surface;
 }
@@ -63,8 +66,25 @@ void BaseSurface::draw() {
 }
 
 void BaseSurface::clear() {
+	unbindHdOverride();
 	_surface->fillRect(Common::Rect(0, 0, _surface->w, _surface->h), 0);
 	++_version;
+}
+
+// Neverhood Reklayed: the CLUT8 _surface is always filled exactly as upstream does;
+// the binding only tells Screen's HD render path to sample the override instead.
+void BaseSurface::bindHdOverride(const Graphics::Surface *hdSurface, int16 width, int16 height, bool flipX, bool flipY) {
+	if (hdSurface && _vm->_screen->isHdEnabled()) {
+		_vm->_screen->setHdBinding(_surface, hdSurface, width, height, flipX, flipY);
+		_hdBound = true;
+	}
+}
+
+void BaseSurface::unbindHdOverride() {
+	if (_hdBound) {
+		_vm->_screen->clearHdBinding(_surface);
+		_hdBound = false;
+	}
 }
 
 void BaseSurface::drawSpriteResource(SpriteResource &spriteResource) {
@@ -72,6 +92,7 @@ void BaseSurface::drawSpriteResource(SpriteResource &spriteResource) {
 		spriteResource.getDimensions().height <= _drawRect.height) {
 		clear();
 		spriteResource.draw(_surface, false, false);
+		bindHdOverride(spriteResource.getHdOverride(), spriteResource.getDimensions().width, spriteResource.getDimensions().height, false, false);
 		++_version;
 	}
 }
@@ -86,6 +107,7 @@ void BaseSurface::drawSpriteResourceEx(SpriteResource &spriteResource, bool flip
 		if (_surface) {
 			clear();
 			spriteResource.draw(_surface, flipX, flipY);
+			bindHdOverride(spriteResource.getHdOverride(), spriteResource.getDimensions().width, spriteResource.getDimensions().height, flipX, flipY);
 			++_version;
 		}
 	}
@@ -100,6 +122,8 @@ void BaseSurface::drawAnimResource(AnimResource &animResource, uint frameIndex, 
 		clear();
 		if (frameIndex < animResource.getFrameCount()) {
 			animResource.draw(frameIndex, _surface, flipX, flipY);
+			const NDrawRect &frameRect = animResource.getFrameInfo(frameIndex).drawOffset;
+			bindHdOverride(animResource.getHdOverride(frameIndex), frameRect.width, frameRect.height, flipX, flipY);
 			++_version;
 		}
 	}
@@ -115,6 +139,9 @@ void BaseSurface::drawMouseCursorResource(MouseCursorResource &mouseCursorResour
 void BaseSurface::copyFrom(Graphics::Surface *sourceSurface, int16 x, int16 y, NDrawRect &sourceRect) {
 	// Copy a rectangle from sourceSurface, 0 is the transparent color
 	// Clipping is performed against the right/bottom border since x, y will always be >= 0
+
+	// Neverhood Reklayed: pixels composited in here are not part of any HD override
+	unbindHdOverride();
 
 	if (x + sourceRect.width > _surface->w)
 		sourceRect.width = _surface->w - x - 1;

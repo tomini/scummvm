@@ -18,9 +18,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * added the ResourceMan::hasOverride() HD asset override hook.
+ * added the HD asset override lookup (initOverrides/hasOverride/getOverride).
  */
 
+#include "common/ptr.h"
+#include "image/png.h"
 #include "neverhood/resourceman.h"
 
 namespace Neverhood {
@@ -36,6 +38,98 @@ ResourceMan::ResourceMan() {
 }
 
 ResourceMan::~ResourceMan() {
+	for (Common::HashMap<Common::String, Graphics::Surface*>::iterator it = _overrideSurfaces.begin(); it != _overrideSurfaces.end(); ++it) {
+		if (it->_value) {
+			it->_value->free();
+			delete it->_value;
+		}
+	}
+}
+
+// HD override layer (Neverhood Reklayed)
+
+static Common::String makeOverrideKey(uint32 fileHash, int frameIndex) {
+	if (frameIndex < 0)
+		return Common::String::format("%08X", fileHash);
+	return Common::String::format("%08X_%d", fileHash, frameIndex);
+}
+
+// Parses "<8 hex digits>.png" or "<8 hex digits>_<decimal>.png" (case-insensitive).
+static bool parseOverrideFilename(const Common::String &name, uint32 &fileHash, int &frameIndex) {
+	if (name.size() < 12 || !name.hasSuffixIgnoreCase(".png"))
+		return false;
+	const Common::String stem(name.c_str(), name.size() - 4);
+	fileHash = 0;
+	for (uint i = 0; i < 8; i++) {
+		const char c = stem[i];
+		uint digit;
+		if (c >= '0' && c <= '9')
+			digit = c - '0';
+		else if (c >= 'a' && c <= 'f')
+			digit = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F')
+			digit = c - 'A' + 10;
+		else
+			return false;
+		fileHash = (fileHash << 4) | digit;
+	}
+	if (stem.size() == 8) {
+		frameIndex = -1;
+		return true;
+	}
+	if (stem[8] != '_' || stem.size() == 9 || stem.size() > 13)
+		return false;
+	frameIndex = 0;
+	for (uint i = 9; i < stem.size(); i++) {
+		if (stem[i] < '0' || stem[i] > '9')
+			return false;
+		frameIndex = frameIndex * 10 + (stem[i] - '0');
+	}
+	return true;
+}
+
+int ResourceMan::initOverrides(const Common::FSNode &dir) {
+	Common::FSList files;
+	if (!dir.getChildren(files, Common::FSNode::kListFilesOnly))
+		return 0;
+	for (Common::FSList::const_iterator it = files.begin(); it != files.end(); ++it) {
+		uint32 fileHash;
+		int frameIndex;
+		if (!parseOverrideFilename(it->getName(), fileHash, frameIndex))
+			continue;
+		_overrideFiles[makeOverrideKey(fileHash, frameIndex)] = *it;
+		_overrideHashes[fileHash] = true;
+		debug(2, "ResourceMan::initOverrides() found %s", it->getName().c_str());
+	}
+	return _overrideFiles.size();
+}
+
+const Graphics::Surface *ResourceMan::getOverride(uint32 fileHash, int frameIndex) {
+	if (!hasOverride(fileHash))
+		return nullptr;
+	const Common::String key = makeOverrideKey(fileHash, frameIndex);
+	if (_overrideSurfaces.contains(key))
+		return _overrideSurfaces[key];
+	if (!_overrideFiles.contains(key))
+		return nullptr;
+
+	Graphics::Surface *result = nullptr;
+	Common::ScopedPtr<Common::SeekableReadStream> stream(_overrideFiles[key].createReadStream());
+	Image::PNGDecoder decoder;
+	if (stream && decoder.loadStream(*stream) && decoder.getSurface()) {
+		const Graphics::Surface *decoded = decoder.getSurface();
+		const Graphics::Palette &palette = decoder.getPalette();
+		result = decoded->convertTo(getOverrideFormat(), palette.size() ? palette.data() : nullptr, palette.size());
+		debug(1, "HD override: loaded %s.png (%dx%d)", key.c_str(), result->w, result->h);
+	} else {
+		warning("HD override: failed to decode %s.png, falling back to the original asset", key.c_str());
+	}
+	_overrideSurfaces[key] = result;
+	return result;
+}
+
+bool ResourceMan::hasOverride(uint32 fileHash) const {
+	return _overrideHashes.contains(fileHash);
 }
 
 void ResourceMan::addArchive(const Common::Path &filename, bool isOptional) {
@@ -134,13 +228,6 @@ bool ResourceMan::nhcExists(uint32 fileHash, uint32 type) {
 		return false;
 	if (entry->nhcArchiveEntry && entry->nhcArchive && entry->nhcArchiveEntry->type == type)
 		return true;
-	return false;
-}
-
-bool ResourceMan::hasOverride(uint32 fileHash) const {
-	// Groundwork for the HD asset override layer (Neverhood Reklayed).
-	// Not wired to any override source yet -- always reports "no override",
-	// so behavior is currently identical to upstream ScummVM.
 	return false;
 }
 

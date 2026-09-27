@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * opt-in HD override mode ("hd_overrides_path" setting), mouse input mapping.
  */
 
 #include "common/file.h"
@@ -64,8 +66,40 @@ NeverhoodEngine::~NeverhoodEngine() {
 	delete _rnd;
 }
 
+// Neverhood Reklayed: pick a true-color output format for HD mode (prefer 32bpp).
+static bool findHdScreenFormat(OSystem *system, Graphics::PixelFormat &format) {
+	const Common::List<Graphics::PixelFormat> formats = system->getSupportedFormats();
+	for (int bpp = 4; bpp >= 2; bpp -= 2) {
+		for (Common::List<Graphics::PixelFormat>::const_iterator it = formats.begin(); it != formats.end(); ++it) {
+			if (it->bytesPerPixel == bpp) {
+				format = *it;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 Common::Error NeverhoodEngine::run() {
-	initGraphics(640, 480);
+	// Neverhood Reklayed: HD override mode is opt-in via the "hd_overrides_path"
+	// setting. Without it everything below runs exactly as upstream (CLUT8 640x480).
+	bool hdEnabled = false;
+	Common::FSNode hdDir;
+	Graphics::PixelFormat hdFormat;
+	if (ConfMan.hasKey("hd_overrides_path")) {
+		hdDir = Common::FSNode(ConfMan.getPath("hd_overrides_path"));
+		if (!hdDir.isDirectory())
+			warning("HD overrides: '%s' is not a directory, HD mode disabled", ConfMan.get("hd_overrides_path").c_str());
+		else if (!findHdScreenFormat(_system, hdFormat))
+			warning("HD overrides: backend offers no 16/32bpp format, HD mode disabled");
+		else
+			hdEnabled = true;
+	}
+
+	if (hdEnabled)
+		initGraphics(640 * Screen::kHdScale, 480 * Screen::kHdScale, &hdFormat);
+	else
+		initGraphics(640, 480);
 
 	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
 	const Common::Path extraPath(ConfMan.getPath("extrapath"));
@@ -93,6 +127,13 @@ Common::Error NeverhoodEngine::run() {
 	_screen = new Screen(this);
 	_res = new ResourceMan();
 	setDebugger(new Console(this));
+
+	if (hdEnabled) {
+		_screen->enableHd(hdFormat);
+		const int overrideCount = _res->initOverrides(hdDir);
+		debug(1, "HD overrides: enabled, %d file(s) in '%s', output %dx%d %dbpp", overrideCount,
+			ConfMan.get("hd_overrides_path").c_str(), 640 * Screen::kHdScale, 480 * Screen::kHdScale, hdFormat.bytesPerPixel * 8);
+	}
 
 	if (isDemo()) {
 		_res->addArchive("a.blb");
@@ -190,6 +231,10 @@ void NeverhoodEngine::mainLoop() {
 		Common::Event event;
 		Common::EventManager *eventMan = _system->getEventManager();
 		while (eventMan->pollEvent(event)) {
+			// Neverhood Reklayed: in HD mode the output is scaled, game logic stays in 640x480
+			const int outputScale = _screen->getOutputScale();
+			event.mouse.x /= outputScale;
+			event.mouse.y /= outputScale;
 			switch (event.type) {
 			case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
 				_gameModule->handleKeyDown(event.customType);

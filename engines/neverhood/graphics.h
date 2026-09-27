@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * BaseSurface binds HD override bitmaps to its surface for the HD render path.
  */
 
 #ifndef NEVERHOOD_GRAPHICS_H
@@ -120,6 +122,10 @@ protected:
 	bool _transparent;
 	// Version changes each time the pixels are touched in any way
 	byte _version;
+	// Neverhood Reklayed: true while Screen holds an HD override binding for _surface
+	bool _hdBound;
+	void bindHdOverride(const Graphics::Surface *hdSurface, int16 width, int16 height, bool flipX, bool flipY);
+	void unbindHdOverride();
 };
 
 class ShadowSurface : public BaseSurface {
