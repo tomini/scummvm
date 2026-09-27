@@ -75,3 +75,20 @@ Upstream ScummVM copyright/license terms are unchanged; see `COPYRIGHT` and `COP
   renders, like Scene1005's note paper (`0x8870A546`). The export added above
   only fires from `BaseSurface::draw()`, so that case was previously missed
   entirely. By then the scene's own `setPalette()` has normally already run.
+- `resourceman.{h,cpp}`, `graphics.cpp`: two more HD source export fixes.
+  - Real per-pixel alpha: `exportSource()` now takes the surface's
+    `transparent`/`alphaColor` (mirroring what `Screen::blitRenderItem` would
+    use for the same draw) and, when transparent, builds an RGBA32 image
+    before calling `Image::writePNG()` instead of a flat RGB palette image.
+    Without this, the "transparent" palette index (almost always 0) came out
+    as an opaque solid color in the exported PNG, even for a single stray
+    pixel inside otherwise-opaque art.
+  - Mirrored draws are un-mirrored on write, not skipped: a flipped and
+    unflipped draw of the same asset share one fileHash/frameIndex key (the
+    HD override render path re-applies flipX/flipY at blit time on top of a
+    canonical source image, same as the original engine mirroring one
+    authored bitmap). `bindSourceExportKey()` now records flipX/flipY too;
+    `exportSource()` reads source pixels in mirrored order when writing, so
+    every write lands in the same canonical orientation regardless of which
+    flip state triggered it. No asset is skipped, and none can be corrupted
+    with a backwards image by an unlucky draw order.

@@ -19,7 +19,8 @@
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
  * added the HD asset override lookup (initOverrides/hasOverride/getOverride)
- * and the HD source export hook (enableSourceExport/exportSource).
+ * and the HD source export hook (enableSourceExport/exportSource), which
+ * writes real per-pixel alpha for transparent sprites.
  */
 
 #ifndef NEVERHOOD_RESOURCEMAN_H
@@ -140,7 +141,14 @@ public:
 	// not a static archive walk, so exported colors are always correct.
 	void enableSourceExport(const Common::Path &dir) { _sourceExportDir = dir; _sourceExportEnabled = true; }
 	bool isSourceExportEnabled() const { return _sourceExportEnabled; }
-	void exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData);
+	// transparent/alphaColor mirror what Screen::blitRenderItem would use for
+	// this surface, so the exported PNG carries real alpha instead of a solid
+	// color for the "transparent" palette index (matters even for a single
+	// stray pixel, e.g. inside a letter's counter shape).
+	// flipX/flipY: surface currently holds a mirrored draw; un-mirrored back
+	// to the canonical orientation before writing, so a flipped and unflipped
+	// draw of the same asset can't corrupt each other's export.
+	void exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData, bool transparent, byte alphaColor = 0, bool flipX = false, bool flipY = false);
 	const ResourceFileEntry& getEntry(uint index) { return _entries[index]; }
 	uint getEntryCount() { return _entries.size(); }
 	void queryResource(uint32 fileHash, ResourceHandle &resourceHandle);

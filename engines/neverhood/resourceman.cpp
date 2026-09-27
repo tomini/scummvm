@@ -135,7 +135,7 @@ bool ResourceMan::hasOverride(uint32 fileHash) const {
 
 // HD source export (Neverhood Reklayed)
 
-void ResourceMan::exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData) {
+void ResourceMan::exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData, bool transparent, byte alphaColor, bool flipX, bool flipY) {
 	if (!_sourceExportEnabled)
 		return;
 	if (!paletteData) {
@@ -167,7 +167,44 @@ void ResourceMan::exportSource(uint32 fileHash, int frameIndex, const Graphics::
 		warning("HD source export: failed to open %s.png for writing", key.c_str());
 		return;
 	}
-	Image::writePNG(out, surface, rgbPalette, 256);
+
+	if (transparent) {
+		// Build real per-pixel alpha instead of relying on writePNG's palette
+		// path, which has no way to mark one index as transparent -- the
+		// "background" color Screen::blitRenderItem would have skipped would
+		// otherwise end up as an opaque solid color in the PNG. Also
+		// un-mirrors back to the canonical orientation, see exportSource()'s
+		// declaration comment.
+		Graphics::Surface rgba;
+		rgba.create(surface.w, surface.h, Graphics::PixelFormat::createFormatRGBA32());
+		for (int y = 0; y < surface.h; y++) {
+			const byte *src = (const byte *)surface.getBasePtr(0, flipY ? surface.h - 1 - y : y);
+			uint32 *dst = (uint32 *)rgba.getBasePtr(0, y);
+			for (int x = 0; x < surface.w; x++) {
+				const byte index = src[flipX ? surface.w - 1 - x : x];
+				if (index == alphaColor)
+					dst[x] = rgba.format.ARGBToColor(0, 0, 0, 0);
+				else
+					dst[x] = rgba.format.ARGBToColor(255, rgbPalette[index * 3 + 0], rgbPalette[index * 3 + 1], rgbPalette[index * 3 + 2]);
+			}
+		}
+		Image::writePNG(out, rgba, nullptr, 0);
+		rgba.free();
+	} else if (flipX || flipY) {
+		Graphics::Surface mirrored;
+		mirrored.create(surface.w, surface.h, surface.format);
+		for (int y = 0; y < surface.h; y++) {
+			const byte *src = (const byte *)surface.getBasePtr(0, flipY ? surface.h - 1 - y : y);
+			byte *dst = (byte *)mirrored.getBasePtr(0, y);
+			for (int x = 0; x < surface.w; x++)
+				dst[x] = src[flipX ? surface.w - 1 - x : x];
+		}
+		Image::writePNG(out, mirrored, rgbPalette, 256);
+		mirrored.free();
+	} else {
+		Image::writePNG(out, surface, rgbPalette, 256);
+	}
+
 	out.close();
 	debug(2, "HD source export: wrote %s.png", key.c_str());
 }

@@ -133,7 +133,17 @@ protected:
 	// first loaded) guaranteed to already be active -- see MODIFICATIONS.md.
 	uint32 _sourceExportFileHash;
 	int _sourceExportFrameIndex;
-	void bindSourceExportKey(uint32 fileHash, int frameIndex) { _sourceExportFileHash = fileHash; _sourceExportFrameIndex = frameIndex; }
+	// True when _surface currently holds a mirrored draw; exportSource() uses
+	// this to un-mirror back to the canonical orientation on write, so a
+	// flipped and unflipped draw of the same asset can't corrupt each other's
+	// export under the shared fileHash/frameIndex key.
+	bool _sourceExportFlipX, _sourceExportFlipY;
+	void bindSourceExportKey(uint32 fileHash, int frameIndex, bool flipX = false, bool flipY = false) {
+		_sourceExportFileHash = fileHash;
+		_sourceExportFrameIndex = frameIndex;
+		_sourceExportFlipX = flipX;
+		_sourceExportFlipY = flipY;
+	}
 };
 
 class ShadowSurface : public BaseSurface {

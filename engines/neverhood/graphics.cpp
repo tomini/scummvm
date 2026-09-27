@@ -30,7 +30,7 @@ namespace Neverhood {
 BaseSurface::BaseSurface(NeverhoodEngine *vm, int priority, int16 width, int16 height, Common::String name)
 	: _vm(vm), _priority(priority), _visible(true), _transparent(true),
 	_clipRects(nullptr), _clipRectsCount(0), _version(0), _name(name), _hdBound(false),
-	_sourceExportFileHash(0), _sourceExportFrameIndex(-1) {
+	_sourceExportFileHash(0), _sourceExportFrameIndex(-1), _sourceExportFlipX(false), _sourceExportFlipY(false) {
 
 	_drawRect.x = 0;
 	_drawRect.y = 0;
@@ -62,7 +62,7 @@ void BaseSurface::draw() {
 		// always runs before it and the previous scene's palette may have just
 		// been torn down (Palette::~Palette() nulls it out).
 		if (_sourceExportFileHash && _vm->_res->isSourceExportEnabled())
-			_vm->_res->exportSource(_sourceExportFileHash, _sourceExportFrameIndex, *_surface, _vm->_screen->getPaletteData());
+			_vm->_res->exportSource(_sourceExportFileHash, _sourceExportFrameIndex, *_surface, _vm->_screen->getPaletteData(), _transparent, 0, _sourceExportFlipX, _sourceExportFlipY);
 		if (_clipRects && _clipRectsCount) {
 			_vm->_screen->drawSurfaceClipRects(_surface, _drawRect, _clipRects, _clipRectsCount, _transparent, _version);
 		} else if (_sysRect.x == 0 && _sysRect.y == 0) {
@@ -121,7 +121,11 @@ void BaseSurface::drawSpriteResourceEx(SpriteResource &spriteResource, bool flip
 			clear();
 			spriteResource.draw(_surface, flipX, flipY);
 			bindHdOverride(spriteResource.getHdOverride(), spriteResource.getDimensions().width, spriteResource.getDimensions().height, flipX, flipY);
-			bindSourceExportKey(spriteResource.getFileHash(), -1);
+			// Neverhood Reklayed: bind even when flipped -- exportSource()
+			// un-mirrors back to the canonical orientation on write, so a
+			// flipped and unflipped draw of the same asset can't corrupt each
+			// other's export under the shared fileHash key.
+			bindSourceExportKey(spriteResource.getFileHash(), -1, flipX, flipY);
 			++_version;
 		}
 	}
@@ -140,8 +144,9 @@ void BaseSurface::drawAnimResource(AnimResource &animResource, uint frameIndex, 
 			bindHdOverride(animResource.getHdOverride(frameIndex), frameRect.width, frameRect.height, flipX, flipY);
 			// Skip export while color replacement is active, same reasoning as
 			// getHdOverride(): the active palette alone won't capture that color.
+			// Flipped draws still bind -- see drawSpriteResourceEx()'s comment.
 			if (!animResource.hasActiveColorReplacement())
-				bindSourceExportKey(animResource.getFileHash(), frameIndex);
+				bindSourceExportKey(animResource.getFileHash(), frameIndex, flipX, flipY);
 			++_version;
 		}
 	}
@@ -166,7 +171,7 @@ void BaseSurface::copyFrom(Graphics::Surface *sourceSurface, int16 x, int16 y, N
 	// point the scene's own setPalette() has normally already run (it's called
 	// right after setBackground(), well before this kind of text compositing).
 	if (_sourceExportFileHash && _vm->_res->isSourceExportEnabled())
-		_vm->_res->exportSource(_sourceExportFileHash, _sourceExportFrameIndex, *_surface, _vm->_screen->getPaletteData());
+		_vm->_res->exportSource(_sourceExportFileHash, _sourceExportFrameIndex, *_surface, _vm->_screen->getPaletteData(), _transparent, 0, _sourceExportFlipX, _sourceExportFlipY);
 	unbindHdOverride();
 	bindSourceExportKey(0, -1);
 
