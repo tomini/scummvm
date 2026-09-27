@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * added the ResourceMan::hasOverride() HD asset override hook.
  */
 
 #ifndef NEVERHOOD_RESOURCEMAN_H
@@ -116,6 +118,7 @@ public:
 	Common::SeekableReadStream *createNhcStream(uint32 fileHash, uint32 type);
 	bool nhcExists(uint32 fileHash, uint32 type);
 	bool exists(uint32 fileHash);
+	bool hasOverride(uint32 fileHash) const;
 	const ResourceFileEntry& getEntry(uint index) { return _entries[index]; }
 	uint getEntryCount() { return _entries.size(); }
 	void queryResource(uint32 fileHash, ResourceHandle &resourceHandle);

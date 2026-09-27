@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * added the ResourceMan::hasOverride() HD asset override hook.
  */
 
 #include "neverhood/resourceman.h"
@@ -135,6 +137,13 @@ bool ResourceMan::nhcExists(uint32 fileHash, uint32 type) {
 	return false;
 }
 
+bool ResourceMan::hasOverride(uint32 fileHash) const {
+	// Groundwork for the HD asset override layer (Neverhood Reklayed).
+	// Not wired to any override source yet -- always reports "no override",
+	// so behavior is currently identical to upstream ScummVM.
+	return false;
+}
+
 bool ResourceMan::exists(uint32 fileHash) {
 	ResourceFileEntry *entry = findEntry(fileHash);
 	if (!entry)
@@ -197,6 +206,10 @@ void ResourceMan::loadResource(ResourceHandle &resourceHandle, bool applyResourc
 	resourceHandle._data = nullptr;
 	if (resourceHandle.isValid()) {
 		const uint32 fileHash = resourceHandle.fileHash();
+
+		if (hasOverride(fileHash))
+			debug(3, "ResourceMan::loadResource() HD override available for %08x", fileHash);
+
 		ResourceData *resourceData = _data[fileHash];
 		if (!resourceData) {
 			resourceData = new ResourceData();
