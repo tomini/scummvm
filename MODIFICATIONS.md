@@ -69,3 +69,9 @@ Upstream ScummVM copyright/license terms are unchanged; see `COPYRIGHT` and `COP
     Re-writes a key up to 5 times, not once, since the palette can still be
     mid-fade on the first few draws. `AnimResource::hasActiveColorReplacement()`
     (new) skips frames under `setRepl()`, same reasoning as `getHdOverride()`.
+- `graphics.cpp`, `BaseSurface::copyFrom()`: exports the surface's still-clean
+  pixels one last time right before they get overwritten, if it never got a
+  `draw()` first. Example: text composited onto a background before any frame
+  renders, like Scene1005's note paper (`0x8870A546`). The export added above
+  only fires from `BaseSurface::draw()`, so that case was previously missed
+  entirely. By then the scene's own `setPalette()` has normally already run.

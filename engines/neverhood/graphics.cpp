@@ -159,7 +159,14 @@ void BaseSurface::copyFrom(Graphics::Surface *sourceSurface, int16 x, int16 y, N
 	// Clipping is performed against the right/bottom border since x, y will always be >= 0
 
 	// Neverhood Reklayed: pixels composited in here are not part of any HD
-	// override, nor still a clean copy of whatever _sourceExportFileHash names
+	// override, nor still a clean copy of whatever _sourceExportFileHash names.
+	// If the surface never got a draw() before this overwrites it (e.g. text
+	// drawn onto a background right in a scene's constructor, before any frame
+	// renders), export the clean pixels now -- one last chance, and by this
+	// point the scene's own setPalette() has normally already run (it's called
+	// right after setBackground(), well before this kind of text compositing).
+	if (_sourceExportFileHash && _vm->_res->isSourceExportEnabled())
+		_vm->_res->exportSource(_sourceExportFileHash, _sourceExportFrameIndex, *_surface, _vm->_screen->getPaletteData());
 	unbindHdOverride();
 	bindSourceExportKey(0, -1);
 
