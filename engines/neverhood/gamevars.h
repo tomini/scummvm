@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * optional read trace (setReadTrace) for the headless scene walker.
  */
 
 #ifndef NEVERHOOD_GAMEVARS_H
@@ -162,6 +164,16 @@ enum : uint {
 	V_END_
 };
 
+// Neverhood Reklayed: one getGlobalVar()/getSubVar() call, recorded while a
+// read trace is active (scene walker, see scenewalker.cpp). isSub=false means
+// a global var and subNameHash is unused.
+struct GameVarRead {
+	uint32 nameHash;
+	uint32 subNameHash;
+	bool isSub;
+	uint32 value;
+};
+
 struct GameVar {
 	uint32 nameHash;
 	uint32 value;
@@ -181,7 +193,10 @@ public:
 	uint32 getSubVar(uint32 nameHash, uint32 subNameHash);
 	void setSubVar(uint32 nameHash, uint32 subNameHash, uint32 value);
 	void dumpVars(Console *con);
+	// Neverhood Reklayed: while non-null, every read is appended to trace.
+	void setReadTrace(Common::Array<GameVarRead> *trace) { _readTrace = trace; }
 protected:
+	Common::Array<GameVarRead> *_readTrace = nullptr;
 	Common::Array<GameVar> _vars;
 	int16 addVar(uint32 nameHash, uint32 value);
 	int16 findSubVarIndex(int16 varIndex, uint32 subNameHash);

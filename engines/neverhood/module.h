@@ -17,6 +17,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * createScene() made virtual (plus the walkerCreateScene() entry point) so the
+ * headless scene walker can construct any scene of any module.
  */
 
 // TODO: I couldn't come up with a better name than 'Module' so far
@@ -48,6 +51,10 @@ public:
 	~Module() override;
 	void draw() override;
 	SceneType getSceneType() { return _sceneType; }
+	// Neverhood Reklayed: scene walker entry point (scenewalker.cpp). Builds
+	// scene sceneNum/which exactly like the module's own transitions do; the
+	// caller must have deleted the previous _childObject first.
+	void walkerCreateScene(int sceneNum, int which) { createScene(sceneNum, which); }
 
 	Entity *_childObject;
 protected:
@@ -57,6 +64,10 @@ protected:
 	SceneType _sceneType;
 	int _navigationAreaType;
 	uint32 handleMessage(int messageNum, const MessageParam &param, Entity *sender);
+	// Neverhood Reklayed: every ModuleNNNN (and MenuModule) already declares a
+	// createScene(int, int) with this exact signature, so it overrides this
+	// without any change to the module headers. No-op for GameModule.
+	virtual void createScene(int sceneNum, int which) {}
 	NavigationScene *navigationScene();
 	void createNavigationScene(uint32 navigationListId, int navigationIndex, const byte *itemsTypes = NULL);
 	void createSmackerScene(uint32 fileHash, bool doubleSurface, bool canSkip, bool canAbort);

@@ -63,6 +63,7 @@ MODULE_OBJS = \
 	resourceman.o \
 	saveload.o \
 	scene.o \
+	scenewalker.o \
 	screen.o \
 	smackerscene.o \
 	smackerplayer.o \

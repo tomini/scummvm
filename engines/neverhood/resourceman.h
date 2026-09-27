@@ -20,7 +20,8 @@
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
  * added the HD asset override lookup (initOverrides/hasOverride/getOverride)
  * and the HD source export hook (enableSourceExport/exportSource), which
- * writes real per-pixel alpha for transparent sprites.
+ * writes real per-pixel alpha for transparent sprites. Resource query trace
+ * (setQueryTrace) and export accessors for the headless scene walker.
  */
 
 #ifndef NEVERHOOD_RESOURCEMAN_H
@@ -149,6 +150,12 @@ public:
 	// to the canonical orientation before writing, so a flipped and unflipped
 	// draw of the same asset can't corrupt each other's export.
 	void exportSource(uint32 fileHash, int frameIndex, const Graphics::Surface &surface, const byte *paletteData, bool transparent, byte alphaColor = 0, bool flipX = false, bool flipY = false);
+	const Common::Path &getSourceExportDir() const { return _sourceExportDir; }
+	uint getExportedKeyCount() const { return _exportedKeys.size(); }
+	// Scene walker (Neverhood Reklayed): while non-null, the hash of every
+	// queryResource() call (i.e. every resource a scene or sprite asks for)
+	// is inserted into trace.
+	void setQueryTrace(Common::HashMap<uint32, bool> *trace) { _queryTrace = trace; }
 	const ResourceFileEntry& getEntry(uint index) { return _entries[index]; }
 	uint getEntryCount() { return _entries.size(); }
 	void queryResource(uint32 fileHash, ResourceHandle &resourceHandle);
@@ -170,6 +177,7 @@ protected:
 	bool _sourceExportEnabled = false;
 	Common::Path _sourceExportDir;
 	Common::HashMap<Common::String, int> _exportedKeys; // export count per key, see exportSource()
+	Common::HashMap<uint32, bool> *_queryTrace = nullptr;
 };
 
 } // End of namespace Neverhood

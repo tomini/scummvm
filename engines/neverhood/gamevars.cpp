@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
+ * getGlobalVar()/getSubVar() report to the scene walker's read trace.
  */
 
 #include "neverhood/console.h"
@@ -60,7 +62,12 @@ void GameVars::saveState(Common::OutSaveFile *out) {
 
 uint32 GameVars::getGlobalVar(uint32 nameHash) {
 	int16 varIndex = findSubVarIndex(0, nameHash);
-	return varIndex != -1 ? _vars[varIndex].value : 0;
+	const uint32 value = varIndex != -1 ? _vars[varIndex].value : 0;
+	if (_readTrace) {
+		GameVarRead read = { nameHash, 0, false, value };
+		_readTrace->push_back(read);
+	}
+	return value;
 }
 
 void GameVars::setGlobalVar(uint32 nameHash, uint32 value) {
@@ -74,6 +81,10 @@ uint32 GameVars::getSubVar(uint32 nameHash, uint32 subNameHash) {
 		int16 subVarIndex = findSubVarIndex(varIndex, subNameHash);
 		if (subVarIndex != -1)
 			value = _vars[subVarIndex].value;
+	}
+	if (_readTrace) {
+		GameVarRead read = { nameHash, subNameHash, true, value };
+		_readTrace->push_back(read);
 	}
 	return value;
 }

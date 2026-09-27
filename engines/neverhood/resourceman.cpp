@@ -19,11 +19,13 @@
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
  * added the HD asset override lookup (initOverrides/hasOverride/getOverride)
- * and the HD source export hook (exportSource).
+ * and the HD source export hook (exportSource), plus a resource query trace
+ * for the headless scene walker.
  */
 
 #include "common/ptr.h"
 #include "image/png.h"
+#include "neverhood/resource.h"
 #include "neverhood/resourceman.h"
 
 namespace Neverhood {
@@ -322,6 +324,14 @@ bool ResourceMan::exists(uint32 fileHash) {
 void ResourceMan::queryResource(uint32 fileHash, ResourceHandle &resourceHandle) {
 	ResourceFileEntry *firstEntry;
 	resourceHandle._resourceFileEntry = findEntry(fileHash, &firstEntry);
+	// Neverhood Reklayed scene walker: only visual resources (bitmap, palette,
+	// animation) -- sounds are picked at random by some scenes and would make
+	// two otherwise identical scene variants look different.
+	if (_queryTrace && resourceHandle.isValid()) {
+		const byte type = resourceHandle.type();
+		if (type == kResTypeBitmap || type == kResTypePalette || type == kResTypeAnimation)
+			_queryTrace->setVal(fileHash, true);
+	}
 	resourceHandle._extData = firstEntry && firstEntry->archiveEntry ? firstEntry->archiveEntry->extData : nullptr;
 }
 

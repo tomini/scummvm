@@ -19,7 +19,8 @@
  *
  * Modified 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
  * opt-in HD override mode ("hd_overrides_path" setting), mouse input mapping,
- * opt-in HD source export ("export_hd_source_path" setting).
+ * opt-in HD source export ("export_hd_source_path" setting),
+ * opt-in headless scene walker ("walk_all_scenes" setting).
  */
 
 #include "common/file.h"
@@ -43,6 +44,7 @@
 #include "neverhood/graphics.h"
 #include "neverhood/resourceman.h"
 #include "neverhood/resource.h"
+#include "neverhood/scenewalker.h"
 #include "neverhood/screen.h"
 #include "neverhood/sound.h"
 #include "neverhood/staticdata.h"
@@ -215,13 +217,28 @@ Common::Error NeverhoodEngine::run() {
 		(*navigationList)[5].middleFlag = 1;
 	}
 
-	if (ConfMan.hasKey("save_slot")) {
-		if (loadGameState(ConfMan.getInt("save_slot")).getCode() != Common::kNoError)
+	// Neverhood Reklayed: headless scene walker, see scenewalker.h and
+	// MODIFICATIONS.md. Opt-in via "walk_all_scenes"; instead of normal play,
+	// builds every sprite scene in turn so the HD source export hook captures
+	// the whole game without a human playthrough, then exits.
+	Common::Error result = Common::kNoError;
+	if (ConfMan.hasKey("walk_all_scenes") && ConfMan.getBool("walk_all_scenes")) {
+		if (!_res->isSourceExportEnabled()) {
+			result = Common::Error(Common::kUnknownError, "walk_all_scenes needs export_hd_source_path to be set");
+		} else {
+			_isSaveAllowed = false;
+			SceneWalker walker(this);
+			walker.run();
+		}
+	} else {
+		if (ConfMan.hasKey("save_slot")) {
+			if (loadGameState(ConfMan.getInt("save_slot")).getCode() != Common::kNoError)
+				_gameModule->startup();
+		} else
 			_gameModule->startup();
-	} else
-		_gameModule->startup();
 
-	mainLoop();
+		mainLoop();
+	}
 
 	delete _gameModule;
 	delete _soundMan;
@@ -233,7 +250,7 @@ Common::Error NeverhoodEngine::run() {
 	delete _gameVars;
 	delete _staticData;
 
-	return Common::kNoError;
+	return result;
 }
 
 void NeverhoodEngine::mainLoop() {
