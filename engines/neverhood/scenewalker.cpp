@@ -318,9 +318,20 @@ bool SceneWalker::runJob(int moduleNum, int sceneNum, int which, const VarSettin
 			pumpFrame(true);
 			result.framesDrawn++;
 		}
-		if (!_aborted && !_extraHashesDone.contains(moduleNum)) {
-			_extraHashesDone[moduleNum] = true;
-			exportExtraHashes(moduleNum);
+		if (!_aborted) {
+			// Module-level fallback bucket (sceneNum -1 in the table), once
+			// per module, plus this specific scene's own resolved entries,
+			// once per scene: see exportExtraHashes()'s declaration comment.
+			const Common::String moduleKey = groupId(moduleNum, -1);
+			if (!_extraHashesDone.contains(moduleKey)) {
+				_extraHashesDone[moduleKey] = true;
+				exportExtraHashes(moduleNum, -1);
+			}
+			const Common::String sceneKey = groupId(moduleNum, sceneNum);
+			if (!_extraHashesDone.contains(sceneKey)) {
+				_extraHashesDone[sceneKey] = true;
+				exportExtraHashes(moduleNum, sceneNum);
+			}
 		}
 	}
 
@@ -372,20 +383,20 @@ void SceneWalker::constructScene(int moduleNum, int sceneNum, int which) {
 	}
 }
 
-void SceneWalker::exportExtraHashes(int moduleNum) {
-	// Deliberately bypasses SpriteResource/ResourceMan::loadResource(): that
+void SceneWalker::exportExtraHashes(int moduleNum, int sceneNum) {
+	// Deliberately bypasses SpriteResource/ResourceMan::loadResource(). That
 	// path caches decoded data in ResourceMan's own _data table, shared with
 	// every other live resource handle. Loading and then unloading dozens of
-	// hashes back to back through it -- see the git history of this function
-	// for the two attempts that didn't work -- ended up corrupting that
-	// shared cache badly enough that an unrelated scene's destructor would
-	// segfault several jobs later, deep inside ResourceMan::purgeResources().
-	// Never fully root-caused; reading the raw bytes and decoding them by
-	// hand here instead sidesteps the shared cache entirely, which is a
-	// small enough function to be confident it has no such side effects.
+	// hashes back to back through it, see the git history of this function
+	// for the two attempts that didn't work, ended up corrupting that shared
+	// cache badly enough that an unrelated scene's destructor would segfault
+	// several jobs later, deep inside ResourceMan::purgeResources(). Never
+	// fully root caused; reading the raw bytes and decoding them by hand
+	// here instead sidesteps the shared cache entirely, which is a small
+	// enough function to be confident it has no such side effects.
 	int count = 0;
 	for (uint i = 0; i < ARRAYSIZE(kSceneWalkerExtraHashes); i++) {
-		if (kSceneWalkerExtraHashes[i].moduleNum != moduleNum)
+		if (kSceneWalkerExtraHashes[i].moduleNum != moduleNum || kSceneWalkerExtraHashes[i].sceneNum != sceneNum)
 			continue;
 		const uint32 fileHash = kSceneWalkerExtraHashes[i].fileHash;
 
@@ -420,7 +431,7 @@ void SceneWalker::exportExtraHashes(int moduleNum) {
 		delete[] raw;
 	}
 	if (count > 0)
-		logLine(Common::String::format("  module %d: %d extra hash(es) exported", moduleNum, count));
+		logLine(Common::String::format("  %s: %d extra hash(es) exported", groupId(moduleNum, sceneNum).c_str(), count));
 }
 
 void SceneWalker::pumpFrame(bool draw) {

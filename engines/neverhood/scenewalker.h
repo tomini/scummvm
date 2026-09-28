@@ -84,20 +84,27 @@ private:
 	int _jobCount, _fullJobCount, _skippedJobCount;
 	bool _aborted;
 
-	// Modules whose kSceneWalkerExtraHashes entries have already been
-	// exported this run (see exportExtraHashes()).
-	Common::HashMap<int, bool> _extraHashesDone;
+	// (moduleNum, sceneNum) pairs whose kSceneWalkerExtraHashes entries have
+	// already been exported this run (see exportExtraHashes()). sceneNum -1
+	// is the module-level fallback bucket (entries not resolved to a
+	// specific scene), tracked the same way as any other "scene".
+	Common::HashMap<Common::String, bool> _extraHashesDone;
 
 	bool walkGroup(int moduleNum, int sceneNum, const Common::Array<int> &whichs);
 	bool runJob(int moduleNum, int sceneNum, int which, const VarSettings &vars, bool forceFull, JobResult &result);
 	void constructScene(int moduleNum, int sceneNum, int which);
-	// Neverhood Reklayed: exports every kSceneWalkerExtraHashes entry for
-	// moduleNum once, using whatever palette is currently active (the real
-	// scene job just constructed for that module). These are puzzle-piece /
-	// randomized-selection sprites (module k...FileHash...[] arrays) that the
+	// Neverhood Reklayed: exports every kSceneWalkerExtraHashes entry whose
+	// (moduleNum, sceneNum) matches exactly, using whatever palette is
+	// currently active. Called twice per completed job, from runJob(): once
+	// with sceneNum -1 (the module-level fallback bucket, once per module)
+	// and once with the job's real sceneNum (that scene's own resolved
+	// entries, once per scene). Different scenes in the same module can use
+	// different palettes, see the table generator and MODIFICATIONS.md.
+	// These are puzzle-piece / randomized-selection sprites (module
+	// k...FileHash...[] arrays) that the
 	// game picks between at runtime, so the normal walk only ever sees
 	// whichever one the current job's state happened to select.
-	void exportExtraHashes(int moduleNum);
+	void exportExtraHashes(int moduleNum, int sceneNum);
 	void pumpFrame(bool draw);
 	void teardown();
 

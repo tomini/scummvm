@@ -88,21 +88,92 @@ def split_cases(body):
     return cases
 
 
-def find_extra_hashes(mod):
+def resolve_scene_from_name(class_or_array_name, scene_num_by_class):
+    """Scene4-digit embedded in a class or array name (AsScene1202Item,
+    kScene1308NumberFileHashes) resolved through scene_num_by_class, or None
+    if there is no embedded number or no matching class in this module."""
+    m = re.search(r'Scene(\d{4})', class_or_array_name)
+    return scene_num_by_class.get('Scene' + m.group(1)) if m else None
+
+
+def find_extra_hashes(mod, cases, scene_num_by_class):
     """Every literal in a module's `k...FileHash...[]` arrays: puzzle-piece /
     randomized-selection sprites the scene walker's normal construction path
     never triggers a particular one of (the game picks at runtime), collected
     straight from source instead of walked by state. Zero entries (sentinel
-    "no piece placed") are skipped -- only 0x-prefixed literals count."""
-    hashes = set()
+    "no piece placed") are skipped, only 0x-prefixed literals count.
+
+    Different scenes in the same module routinely use different palettes
+    (module 1300 alone has 7), so exporting these under "whichever scene the
+    module happened to walk first" can and does export some of them under
+    the wrong one. Resolved by where the array is actually used, in two
+    steps, not by guessing from its name (an earlier version tried
+    extracting a scene number straight from the array's own name, e.g.
+    kScene1308NumberFileHashes to Scene1308; that broke for the several
+    arrays named after an old internal scene id that no longer matches any
+    real class, e.g. kScene2711FileHashes1..3, actually used inside
+    Module2700::createScene()'s case 10, not any "Scene2711" class, which
+    does not exist):
+      1. If the array's name appears directly inside exactly one
+         createScene() switch case's own body, that case's sceneNum owns it
+         (kScene2711FileHashes1 above resolves this way, case 10).
+      2. Otherwise, find any usage of the array anywhere in the module's
+         source and take the nearest preceding `ClassName::method(`; if that
+         class is one a switch case directly constructs, that case's
+         sceneNum owns it (kScene1308NumberFileHashes resolves this way,
+         used inside Scene1308's own constructor rather than inline in the
+         switch).
+    A handful of arrays resolve neither way (referenced from more than one
+    case, or named after an internal class id with no owning scene at all,
+    like kAsCommonKeyFileHashes or kClass428FileHashes) and fall back to
+    None, exported once per module instead."""
+    result = []
     for suffix in ('.cpp', '_sprites.cpp', '_sprites.h'):
         path = os.path.join(ROOT, 'modules', 'module%d%s' % (mod, suffix))
         if not os.path.exists(path):
             continue
         src = open(path, encoding='utf-8').read()
-        for m in re.finditer(r'static const uint32 \w*FileHash\w*\[\]\s*=\s*\{([^}]*)\}', src):
-            hashes.update(int(h, 16) for h in re.findall(r'0x[0-9A-Fa-f]+', m.group(1)))
-    return hashes
+        for m in re.finditer(r'static const uint32 (\w*FileHash\w*)\[\]\s*=\s*\{([^}]*)\}', src):
+            name = m.group(1)
+            usage_re = re.compile(r'\b' + re.escape(name) + r'\[')
+
+            owning_cases = [scene for scene, text in cases.items() if usage_re.search(text)]
+            scene_num = owning_cases[0] if len(owning_cases) == 1 else None
+
+            if scene_num is None:
+                # Search from after the array's own declaration (m.end()):
+                # searching the whole file would match the declaration
+                # itself first (`kFooFileHashes[] = {`, which fits `name\[`
+                # too), never reaching any real usage below it.
+                um = usage_re.search(src, m.end())
+                if um:
+                    class_matches = list(re.finditer(r'(\w+)::\w+\s*\(', src[:um.start()]))
+                    if class_matches:
+                        enclosing_class = class_matches[-1].group(1)
+                        scene_num = scene_num_by_class.get(enclosing_class)
+                        if scene_num is None:
+                            # The array is used inside a helper sprite class
+                            # (Ss.../As...) never directly constructed from
+                            # the switch, only from inside a scene's own
+                            # constructor. Most of those embed the exact
+                            # scene they belong to in their own name
+                            # (AsScene1202Item -> Scene1202).
+                            scene_num = resolve_scene_from_name(enclosing_class, scene_num_by_class)
+
+            if scene_num is None:
+                # Last resort: the array's own name (kScene1308NumberFileHashes
+                # -> Scene1308). Works for most arrays, but not all: a few are
+                # named after an old internal scene id that no longer matches
+                # any real class (kScene2711FileHashes1..3, actually used
+                # inside Module2700::createScene()'s case 10, resolved above
+                # already since it is a direct case-body usage). Never used
+                # as anything but a last resort, since it is the least
+                # reliable of the three.
+                scene_num = resolve_scene_from_name(name, scene_num_by_class)
+
+            for h in re.findall(r'0x[0-9A-Fa-f]+', m.group(2)):
+                result.append((int(h, 16), scene_num))
+    return result
 
 
 def main():
@@ -112,6 +183,7 @@ def main():
 
     entries = []
     summary = []
+    extra_entries = []
     for mod in modules:
         path = os.path.join(ROOT, 'modules', 'module%d.cpp' % mod)
         src = open(path, encoding='utf-8').read()
@@ -145,10 +217,16 @@ def main():
                 entries.append((mod, scene, w))
         summary.append('//   Module%d: %d sprite scene(s), %d video/navigation-only case(s) skipped' % (mod, kept, dropped))
 
-    extra_entries = []
-    for mod in modules:
-        for h in sorted(find_extra_hashes(mod)):
-            extra_entries.append((mod, h))
+        scene_num_by_class = {}
+        for scene, text in cases.items():
+            for class_name in re.findall(r'_childObject\s*=\s*new\s+(\w+)\(', text):
+                scene_num_by_class[class_name] = scene
+        seen = set()
+        for h, scene_num in find_extra_hashes(mod, cases, scene_num_by_class):
+            key = (mod, scene_num, h)
+            if key not in seen:
+                seen.add(key)
+                extra_entries.append(key)
 
     # MenuModule (main menu, credits, save/load/delete menus). Not in
     # GameModule::createModule() -- reached through GameModule::createMenuModule().
@@ -208,15 +286,19 @@ namespace Neverhood {
     for name, value in menu_scenes:
         out.write('\t%d, // %s\n' % (value, name))
     out.write('};\n\n')
+    with_scene = sum(1 for _, s, _ in extra_entries if s is not None)
     out.write('// Puzzle-piece / randomized-selection sprites from each module\'s own\n')
-    out.write('// k...FileHash...[] arrays (%d hash(es)): the game picks one at runtime\n' % len(extra_entries))
-    out.write('// by random or puzzle state, so the normal scene walk only ever captures\n')
-    out.write('// whichever one it happened to land on. Exported directly instead, under\n')
-    out.write('// the owning module\'s own palette (see exportExtraHashes()).\n')
-    out.write('struct SceneWalkerExtraHash {\n\tint moduleNum;\n\tuint32 fileHash;\n};\n\n')
+    out.write('// k...FileHash...[] arrays (%d hash(es), %d resolved to their owning scene\n' % (len(extra_entries), with_scene))
+    out.write('// by name (e.g. kScene1308NumberFileHashes -> Scene1308), %d not (shared\n' % (len(extra_entries) - with_scene))
+    out.write('// across scenes, or named after an internal class id): the game picks one\n')
+    out.write('// at runtime by random or puzzle state, so the normal scene walk only ever\n')
+    out.write('// captures whichever one it happened to land on. Exported directly instead,\n')
+    out.write('// under the resolved scene\'s own palette when known, or the module\'s first\n')
+    out.write('// successful scene otherwise (see exportExtraHashes()).\n')
+    out.write('struct SceneWalkerExtraHash {\n\tint moduleNum;\n\tint sceneNum; // -1 = not resolved to a specific scene, see above\n\tuint32 fileHash;\n};\n\n')
     out.write('static const SceneWalkerExtraHash kSceneWalkerExtraHashes[] = {\n')
-    for mod, h in extra_entries:
-        out.write('\t{ %d, 0x%08X },\n' % (mod, h))
+    for mod, scene_num, h in extra_entries:
+        out.write('\t{ %d, %d, 0x%08X },\n' % (mod, -1 if scene_num is None else scene_num, h))
     out.write('};\n\n} // End of namespace Neverhood\n\n#endif\n')
 
 

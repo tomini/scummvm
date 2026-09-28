@@ -210,8 +210,47 @@ Upstream ScummVM copyright/license terms are unchanged; see `COPYRIGHT` and `COP
       = true, matching how `BaseSurface::drawSpriteResource()` always draws)
       and then freed immediately. No caching, no refcounting, nothing shared
       with any live scene's own resource handles at all.
-  - **Verified:** a full walk now completes in ~70s with 0 crashed jobs
-    (previously 0, matching the walker's own pre-existing baseline), and
-    exports 301 of the 410 candidate hashes across 10 modules (the rest are
-    non-bitmap entries the array-name pattern also picked up, e.g. a stray
-    sound or animation id, correctly skipped by the `kResTypeBitmap` check).
+  - **Palette correctness:** exporting every module's extra hashes once,
+    under whatever palette the module's first successful scene happened to
+    set, is wrong whenever an array belongs to a specific scene and that
+    scene isn't the first one reached. Different scenes in the same module
+    routinely use different palettes (module 1300 alone has 7). Resolved at
+    the generator level, in `find_extra_hashes()`, by where an array is
+    actually used rather than by guessing from its own name: first, whether
+    the array's name appears directly inside exactly one `createScene()`
+    switch case's own body; otherwise, the nearest enclosing
+    `ClassName::method(` at any usage of the array, resolved to a scene
+    either directly (that class is what a switch case constructs) or via a
+    `SceneNNNN` number embedded in its own name (`AsScene1202Item` resolves
+    to `Scene1202`); and only as a last resort, a `SceneNNNN` number in the
+    array's own name. That order matters: an earlier version tried the
+    array's own name first and got it wrong for the handful of arrays named
+    after an old internal scene id that no longer matches any real class,
+    e.g. `kScene2711FileHashes1..3`, actually used inside
+    `Module2700::createScene()`'s case 10 (which the usage-based check
+    resolves correctly), not any `Scene2711` class (which doesn't exist).
+    408 of the 415 hashes now carry a specific sceneNum in
+    `kSceneWalkerExtraHashes[]` instead of just a moduleNum; the remaining 7
+    (arrays shared across several scenes, or named after an internal class
+    id with no scene number in it, like `kAsCommonKeyFileHashes`) keep the
+    module-level fallback (sceneNum -1). `SceneWalker::exportExtraHashes()`
+    is called twice per completed job: once for the module's -1 fallback
+    bucket, once for the job's own specific sceneNum, each tracked as done
+    independently so every scene contributes its own hashes under its own
+    palette instead of just the first one reached.
+  - **Verified:** a full walk completes in ~70s with 0 crashed jobs and 2320
+    export keys written.
+  - **Known gap, found by visual review after this fix:** a handful of
+    hashes still export with the wrong colors, not because of a bad
+    scene-to-hash mapping but because the scene they resolve to doesn't have
+    one fixed palette to begin with. `Scene2901` (module 2900, the teleporter
+    map) calls `setPalette(kScene2901FileHashes1[_currLocationButtonNum])`,
+    picking one of several palettes by which location the player last chose;
+    the export only ever sees whichever one is active by default.
+    `Scene1105` (module 1100) calls `setPalette(0x20010002)`, a fixed hash,
+    but that hash is itself one of several alternate background bitmaps
+    (`kScene1105BackgroundFileHashes`), and its palette comes from that
+    bitmap's own embedded palette; the other background variants likely
+    embed their own different ones, exported here under the wrong one. Still
+    open; would need something like the walker's own game-state exploration
+    (trying several values, not just the default one) applied here too.
