@@ -18,7 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Written 2026 by the Neverhood Reklayed project (see MODIFICATIONS.md):
- * headless scene walker for the HD source export hook.
+ * headless scene walker for the HD source export hook, plus a direct export
+ * pass for each module's puzzle-piece file-hash arrays.
  */
 
 #ifndef NEVERHOOD_SCENEWALKER_H
@@ -83,9 +84,20 @@ private:
 	int _jobCount, _fullJobCount, _skippedJobCount;
 	bool _aborted;
 
+	// Modules whose kSceneWalkerExtraHashes entries have already been
+	// exported this run (see exportExtraHashes()).
+	Common::HashMap<int, bool> _extraHashesDone;
+
 	bool walkGroup(int moduleNum, int sceneNum, const Common::Array<int> &whichs);
 	bool runJob(int moduleNum, int sceneNum, int which, const VarSettings &vars, bool forceFull, JobResult &result);
 	void constructScene(int moduleNum, int sceneNum, int which);
+	// Neverhood Reklayed: exports every kSceneWalkerExtraHashes entry for
+	// moduleNum once, using whatever palette is currently active (the real
+	// scene job just constructed for that module). These are puzzle-piece /
+	// randomized-selection sprites (module k...FileHash...[] arrays) that the
+	// game picks between at runtime, so the normal walk only ever sees
+	// whichever one the current job's state happened to select.
+	void exportExtraHashes(int moduleNum);
 	void pumpFrame(bool draw);
 	void teardown();
 

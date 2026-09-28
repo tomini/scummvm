@@ -35,8 +35,10 @@
 #include "neverhood/scenewalker.h"
 #include "neverhood/scenewalker_table.h"
 #include "neverhood/gamemodule.h"
+#include "neverhood/graphics.h"
 #include "neverhood/menumodule.h"
 #include "neverhood/module.h"
+#include "neverhood/resource.h"
 #include "neverhood/resourceman.h"
 #include "neverhood/screen.h"
 #include "neverhood/sound.h"
@@ -316,6 +318,10 @@ bool SceneWalker::runJob(int moduleNum, int sceneNum, int which, const VarSettin
 			pumpFrame(true);
 			result.framesDrawn++;
 		}
+		if (!_aborted && !_extraHashesDone.contains(moduleNum)) {
+			_extraHashesDone[moduleNum] = true;
+			exportExtraHashes(moduleNum);
+		}
 	}
 
 	_vm->_res->setQueryTrace(nullptr);
@@ -364,6 +370,57 @@ void SceneWalker::constructScene(int moduleNum, int sceneNum, int which) {
 		module->_childObject = nullptr;
 		module->walkerCreateScene(sceneNum, which);
 	}
+}
+
+void SceneWalker::exportExtraHashes(int moduleNum) {
+	// Deliberately bypasses SpriteResource/ResourceMan::loadResource(): that
+	// path caches decoded data in ResourceMan's own _data table, shared with
+	// every other live resource handle. Loading and then unloading dozens of
+	// hashes back to back through it -- see the git history of this function
+	// for the two attempts that didn't work -- ended up corrupting that
+	// shared cache badly enough that an unrelated scene's destructor would
+	// segfault several jobs later, deep inside ResourceMan::purgeResources().
+	// Never fully root-caused; reading the raw bytes and decoding them by
+	// hand here instead sidesteps the shared cache entirely, which is a
+	// small enough function to be confident it has no such side effects.
+	int count = 0;
+	for (uint i = 0; i < ARRAYSIZE(kSceneWalkerExtraHashes); i++) {
+		if (kSceneWalkerExtraHashes[i].moduleNum != moduleNum)
+			continue;
+		const uint32 fileHash = kSceneWalkerExtraHashes[i].fileHash;
+
+		ResourceHandle handle;
+		_vm->_res->queryResource(fileHash, handle);
+		if (!handle.isValid() || handle.type() != kResTypeBitmap)
+			continue; // not a bitmap: a stray sound/animation id caught by
+			          // the array-name pattern, or a sentinel value
+
+		uint32 rawSize = 0;
+		byte *raw = _vm->_res->readResourceUncached(fileHash, rawSize);
+		if (!raw)
+			continue;
+
+		bool rle = false;
+		NDimensions dims = { 0, 0 };
+		const byte *pixels = nullptr;
+		parseBitmapResource(raw, &rle, &dims, nullptr, nullptr, &pixels);
+		if (pixels && dims.width > 0 && dims.height > 0) {
+			BaseSurface surface(_vm, 0, dims.width, dims.height, "extra");
+			byte *dest = (byte *)surface.getSurface()->getPixels();
+			const int destPitch = surface.getSurface()->pitch;
+			if (rle)
+				unpackSpriteRle(pixels, dims.width, dims.height, dest, destPitch, false, false);
+			else
+				unpackSpriteNormal(pixels, dims.width, dims.height, dest, destPitch, false, false);
+			// Same convention BaseSurface::drawSpriteResource() draws under:
+			// transparent, index 0 as the transparent color.
+			_vm->_res->exportSource(fileHash, -1, *surface.getSurface(), _vm->_screen->getPaletteData(), true);
+			count++;
+		}
+		delete[] raw;
+	}
+	if (count > 0)
+		logLine(Common::String::format("  module %d: %d extra hash(es) exported", moduleNum, count));
 }
 
 void SceneWalker::pumpFrame(bool draw) {

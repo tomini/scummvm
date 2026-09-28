@@ -292,6 +292,31 @@ Common::SeekableReadStream *ResourceMan::createStream(uint32 fileHash) {
 	return nullptr;
 }
 
+byte *ResourceMan::readResourceUncached(uint32 fileHash, uint32 &outSize) {
+	// Same decompression BlbArchive/NhcArchive::load() does for
+	// loadResource() (createStream() does NOT decompress: it hands back a
+	// raw substream over the on-disk, possibly DCL-compressed, bytes), into
+	// a caller-owned buffer instead of ResourceMan's shared, refcounted
+	// _data cache. See MODIFICATIONS.md / scenewalker.cpp's exportExtraHashes()
+	// for why that cache is off-limits for a one-off, throwaway read.
+	ResourceFileEntry *entry = findEntry(fileHash);
+	if (!entry)
+		return nullptr;
+	if (entry->nhcArchiveEntry && entry->nhcArchive && entry->nhcArchiveEntry->isNormal()) {
+		outSize = entry->nhcArchiveEntry->size;
+		byte *data = new byte[outSize];
+		entry->nhcArchive->load(entry->nhcArchiveEntry, data, 0);
+		return data;
+	}
+	if (entry->archiveEntry && entry->archive) {
+		outSize = entry->archiveEntry->size;
+		byte *data = new byte[outSize];
+		entry->archive->load(entry->archiveEntry, data, 0);
+		return data;
+	}
+	return nullptr;
+}
+
 Common::SeekableReadStream *ResourceMan::createNhcStream(uint32 fileHash, uint32 type) {
 	ResourceFileEntry *entry = findEntry(fileHash);
 	if (!entry)

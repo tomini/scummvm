@@ -154,3 +154,64 @@ Upstream ScummVM copyright/license terms are unchanged; see `COPYRIGHT` and `COP
     one-PNG-per-key design). Some resources are referenced by no engine code
     at all (e.g. `00004011`, a menu-style box with one button), so neither
     the walker nor a playthrough can reach them.
+- Extra-hash export for puzzle-piece / randomized-selection sprites
+  (`scenewalker.{h,cpp}`, `devtools/neverhood_scenewalker_table.py`).
+  Comparing a full walk's output against an older third-party static
+  extraction turned up hashes the walk never captured that are still
+  referenced by engine code, not dead resources: each module's own
+  `k...FileHash...[]` arrays (e.g. a code-lock's digit sprites, a
+  matching-puzzle's pieces), which the game selects between at runtime by
+  random or puzzle state, so a given walk job only ever sees whichever one
+  its state happened to pick.
+  - The generator now also scans each module's `.cpp`/`_sprites.cpp`/
+    `_sprites.h` files for these arrays and collects every literal hash into
+    `kSceneWalkerExtraHashes[]` (410 found), keyed by the owning module.
+  - `SceneWalker::exportExtraHashes(moduleNum)` runs once per module, right
+    after that module's first full job finishes (still mid-scene, so
+    `Screen::_paletteData` holds that module's real palette). Getting a
+    correct, non-crashing version of this function took three rounds of
+    rebuild-and-gdb before landing on its current design:
+    - **First attempt:** loaded each hash as a stack-local `SpriteResource`
+      and drew it into a throwaway `BaseSurface`, calling
+      `Screen::update()` to flush the blit `draw()` queues. That actually
+      *composited* each arbitrarily-sized throwaway surface onto the real,
+      shared 640x480 `_backScreen` at (0,0), corrupting whatever the real
+      scene had drawn there and, for larger sprites, memory past it.
+    - **Second attempt:** kept every loaded `SpriteResource` alive
+      (deliberately leaked) instead of letting each one unload itself at
+      the end of its loop iteration, on the theory that unloading was
+      dropping a shared fileHash's refcount to 0 and letting
+      `ResourceMan::purgeResources()` free data a live scene still expected.
+      Also removed the `Screen::update()` call, keeping only
+      `clearRenderQueue()` to discard the queued blit unprocessed. The
+      crash (`ResourceMan::purgeResources()` dereferencing a garbage
+      pointer, caught with gdb both times) persisted identically,
+      disproving both theories -- confirmed with a clean isolated re-test
+      that removing the whole feature made the walker complete with 0
+      failures, so the bug really was here, just not where either fix
+      assumed.
+    - **Final design:** bypasses `SpriteResource`/`ResourceMan::loadResource()`
+      entirely, since going through it at all -- load and unload alike --
+      was the common thread across both failed attempts, and its shared
+      `_data` cache was never fully cleared of suspicion as the actual
+      corruption site. `queryResource()` (no caching side effects) checks
+      the hash is a bitmap; the new `ResourceMan::readResourceUncached()`
+      decompresses the entry into a fresh, caller-owned buffer (the same
+      `BlbArchive`/`NhcArchive::load()` decompression `loadResource()` uses,
+      just never touching its shared cache) -- an earlier version of this
+      read raw bytes via the existing `createStream()` instead, which turned
+      out to hand back the on-disk bytes undecompressed (`BlbArchive::load()`
+      DCL-decompresses; `createStream()` is a raw substream, meant for
+      Smacker video decoding it as it streams), so only the handful of
+      entries that happened to be stored uncompressed decoded correctly.
+      `parseBitmapResource()`/`unpackSpriteRle()` (both already used
+      elsewhere, just not normally called directly like this) decode by
+      hand into a throwaway `BaseSurface`, which is exported (`transparent`
+      = true, matching how `BaseSurface::drawSpriteResource()` always draws)
+      and then freed immediately. No caching, no refcounting, nothing shared
+      with any live scene's own resource handles at all.
+  - **Verified:** a full walk now completes in ~70s with 0 crashed jobs
+    (previously 0, matching the walker's own pre-existing baseline), and
+    exports 301 of the 410 candidate hashes across 10 modules (the rest are
+    non-bitmap entries the array-name pattern also picked up, e.g. a stray
+    sound or animation id, correctly skipped by the `kResTypeBitmap` check).

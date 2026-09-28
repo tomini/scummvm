@@ -88,6 +88,23 @@ def split_cases(body):
     return cases
 
 
+def find_extra_hashes(mod):
+    """Every literal in a module's `k...FileHash...[]` arrays: puzzle-piece /
+    randomized-selection sprites the scene walker's normal construction path
+    never triggers a particular one of (the game picks at runtime), collected
+    straight from source instead of walked by state. Zero entries (sentinel
+    "no piece placed") are skipped -- only 0x-prefixed literals count."""
+    hashes = set()
+    for suffix in ('.cpp', '_sprites.cpp', '_sprites.h'):
+        path = os.path.join(ROOT, 'modules', 'module%d%s' % (mod, suffix))
+        if not os.path.exists(path):
+            continue
+        src = open(path, encoding='utf-8').read()
+        for m in re.finditer(r'static const uint32 \w*FileHash\w*\[\]\s*=\s*\{([^}]*)\}', src):
+            hashes.update(int(h, 16) for h in re.findall(r'0x[0-9A-Fa-f]+', m.group(1)))
+    return hashes
+
+
 def main():
     gm = open(os.path.join(ROOT, 'gamemodule.cpp'), encoding='utf-8').read()
     body = function_body(gm, r'void GameModule::createModule\(int moduleNum, int which\)')
@@ -127,6 +144,11 @@ def main():
             for w in sorted(whichs):
                 entries.append((mod, scene, w))
         summary.append('//   Module%d: %d sprite scene(s), %d video/navigation-only case(s) skipped' % (mod, kept, dropped))
+
+    extra_entries = []
+    for mod in modules:
+        for h in sorted(find_extra_hashes(mod)):
+            extra_entries.append((mod, h))
 
     # MenuModule (main menu, credits, save/load/delete menus). Not in
     # GameModule::createModule() -- reached through GameModule::createMenuModule().
@@ -185,6 +207,16 @@ namespace Neverhood {
     out.write('static const int kSceneWalkerMenuScenes[] = {\n')
     for name, value in menu_scenes:
         out.write('\t%d, // %s\n' % (value, name))
+    out.write('};\n\n')
+    out.write('// Puzzle-piece / randomized-selection sprites from each module\'s own\n')
+    out.write('// k...FileHash...[] arrays (%d hash(es)): the game picks one at runtime\n' % len(extra_entries))
+    out.write('// by random or puzzle state, so the normal scene walk only ever captures\n')
+    out.write('// whichever one it happened to land on. Exported directly instead, under\n')
+    out.write('// the owning module\'s own palette (see exportExtraHashes()).\n')
+    out.write('struct SceneWalkerExtraHash {\n\tint moduleNum;\n\tuint32 fileHash;\n};\n\n')
+    out.write('static const SceneWalkerExtraHash kSceneWalkerExtraHashes[] = {\n')
+    for mod, h in extra_entries:
+        out.write('\t{ %d, 0x%08X },\n' % (mod, h))
     out.write('};\n\n} // End of namespace Neverhood\n\n#endif\n')
 
 

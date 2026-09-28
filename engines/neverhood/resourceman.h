@@ -122,6 +122,10 @@ public:
 	ResourceFileEntry *findEntrySimple(uint32 fileHash);
 	ResourceFileEntry *findEntry(uint32 fileHash, ResourceFileEntry **firstEntry = NULL);
 	Common::SeekableReadStream *createStream(uint32 fileHash);
+	// Decompressed bytes for fileHash in a fresh, caller-owned buffer
+	// (caller deletes[] it), bypassing the shared _data cache entirely.
+	// nullptr if fileHash doesn't exist.
+	byte *readResourceUncached(uint32 fileHash, uint32 &outSize);
 	Common::SeekableReadStream *createNhcStream(uint32 fileHash, uint32 type);
 	bool nhcExists(uint32 fileHash, uint32 type);
 	bool exists(uint32 fileHash);
